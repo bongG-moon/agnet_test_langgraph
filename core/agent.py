@@ -1,3 +1,15 @@
+"""Core LangGraph runtime for the manufacturing chat assistant.
+
+This file is the best place to start when you want to understand how a user
+question flows through the system. The high-level sequence is:
+
+1. resolve request parameters
+2. decide whether this is retrieval or follow-up analysis
+3. run one or more retrieval jobs when needed
+4. optionally run pandas-based post processing
+5. normalize the final response payload
+"""
+
 import json
 import re
 from datetime import datetime, timedelta
@@ -27,6 +39,13 @@ QueryMode = Literal["retrieval", "followup_transform"]
 
 
 class AgentGraphState(TypedDict, total=False):
+    """Shared graph state passed between LangGraph nodes.
+
+    We keep one mutable-looking state object so each node can add only the values
+    it is responsible for. That makes the graph easier to read than passing a long
+    argument list between many helper functions.
+    """
+
     user_input: str
     chat_history: List[Dict[str, str]]
     context: Dict[str, Any]
@@ -37,7 +56,8 @@ class AgentGraphState(TypedDict, total=False):
     retrieval_jobs: List[Dict[str, Any]]
     result: Dict[str, Any]
 
-
+# These are the filters we want to echo back to the UI so a beginner can see
+# which parts of the question were actually applied during retrieval.
 APPLIED_PARAM_FIELDS = [
     "date",
     "process_name",
@@ -54,6 +74,8 @@ APPLIED_PARAM_FIELDS = [
     "group_by",
 ]
 
+# When one of these keywords appears, we treat the request as a strong hint that
+# the user wants a transformed result, not just the raw retrieved table.
 POST_PROCESSING_KEYWORDS = [
     "상위",
     "하위",
@@ -75,6 +97,8 @@ POST_PROCESSING_KEYWORDS = [
     "group by",
 ]
 
+# These columns are treated as common "group by" style dimensions in follow-up
+# analysis. The list keeps retry logic and error messages more grounded.
 KNOWN_DIMENSION_COLUMNS = [
     "WORK_DT",
     "OPER_NAME",
@@ -739,6 +763,8 @@ def _run_retrieval(
 
 
 def _resolve_request_node(state: AgentGraphState) -> AgentGraphState:
+    """Extract parameters and decide the first major route in the graph."""
+
     chat_history = state.get("chat_history", [])
     context = state.get("context", {})
     current_data = state.get("current_data")
@@ -756,12 +782,23 @@ def _resolve_request_node(state: AgentGraphState) -> AgentGraphState:
 
 
 def _route_after_resolve(state: AgentGraphState) -> str:
+    """Send the graph to follow-up analysis only when we already have a table."""
+
     if state.get("query_mode") == "followup_transform" and isinstance(state.get("current_data"), dict):
         return "followup_analysis"
     return "plan_retrieval"
 
 
 def _plan_retrieval_node(state: AgentGraphState) -> AgentGraphState:
+    """Choose datasets and split a complex request into executable jobs.
+
+    This node is where a single user question can fan out into multiple internal
+    retrieval jobs, for example:
+    - production + target together
+    - yesterday vs today comparison
+    - one dataset queried several times with different dates
+    """
+
     user_input = state["user_input"]
     current_data = state.get("current_data")
     extracted_params = state.get("extracted_params", {})
@@ -819,6 +856,8 @@ def _plan_retrieval_node(state: AgentGraphState) -> AgentGraphState:
 
 
 def _route_after_retrieval_plan(state: AgentGraphState) -> str:
+    """Pick the simplest execution path after jobs are prepared."""
+
     if state.get("result"):
         return "finish"
 
@@ -829,6 +868,8 @@ def _route_after_retrieval_plan(state: AgentGraphState) -> str:
 
 
 def _single_retrieval_node(state: AgentGraphState) -> AgentGraphState:
+    """Run the common fast path: one retrieval job, then optional post processing."""
+
     extracted_params = state.get("extracted_params", {})
     chat_history = state.get("chat_history", [])
     current_data = state.get("current_data")
@@ -863,6 +904,8 @@ def _single_retrieval_node(state: AgentGraphState) -> AgentGraphState:
 
 
 def _multi_retrieval_node(state: AgentGraphState) -> AgentGraphState:
+    """Run the heavier path for multi-dataset or multi-date requests."""
+
     return {
         "result": _run_multi_retrieval_jobs(
             user_input=state["user_input"],
@@ -874,6 +917,8 @@ def _multi_retrieval_node(state: AgentGraphState) -> AgentGraphState:
 
 
 def _followup_analysis_node(state: AgentGraphState) -> AgentGraphState:
+    """Transform the current table instead of fetching a new one."""
+
     current_data = state.get("current_data")
     if not isinstance(current_data, dict):
         return {
@@ -897,6 +942,8 @@ def _followup_analysis_node(state: AgentGraphState) -> AgentGraphState:
 
 
 def _finish_node(state: AgentGraphState) -> AgentGraphState:
+    """Normalize the final payload shape before returning to Streamlit."""
+
     result = dict(state.get("result", {}))
     if result:
         result.setdefault("execution_engine", "langgraph")
@@ -905,6 +952,13 @@ def _finish_node(state: AgentGraphState) -> AgentGraphState:
 
 @lru_cache(maxsize=1)
 def _get_agent_graph():
+    """Build and cache the StateGraph once for the whole app process.
+
+    Caching matters because Streamlit reruns Python code frequently. Without this,
+    we would rebuild the same graph object every turn even though the topology does
+    not change between questions.
+    """
+
     graph = StateGraph(AgentGraphState)
     graph.add_node("resolve_request", _resolve_request_node)
     graph.add_node("plan_retrieval", _plan_retrieval_node)
@@ -944,6 +998,13 @@ def run_agent(
     context: Dict[str, Any] | None = None,
     current_data: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
+    """Entry point used by the UI layer.
+
+    The UI sends only plain Python data into this function. From this point on,
+    LangGraph owns the orchestration. The returned dictionary is already shaped
+    for the Streamlit layer, so `app.py` can stay very small and easy to read.
+    """
+
     initial_state: AgentGraphState = {
         "user_input": user_input,
         "chat_history": chat_history or [],

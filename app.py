@@ -1,3 +1,5 @@
+"""Streamlit entrypoint for the beginner-friendly LangGraph demo app."""
+
 import streamlit as st
 
 from core.agent import run_agent
@@ -8,10 +10,14 @@ st.set_page_config(page_title="Compact Manufacturing Chat", layout="wide")
 
 
 def _get_saved_chat_history():
+    """Keep only the minimal fields the agent needs from the UI message list."""
+
     return [{"role": message["role"], "content": message["content"]} for message in st.session_state.messages]
 
 
 def _render_saved_chat_history() -> None:
+    """Replay prior chat messages so a page refresh keeps the conversation readable."""
+
     engineer_mode = bool(st.session_state.get("engineer_mode", False))
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
@@ -21,6 +27,13 @@ def _render_saved_chat_history() -> None:
 
 
 def _run_chat_turn(user_input: str):
+    """Bridge the Streamlit session state and the LangGraph runtime.
+
+    The agent only knows about plain inputs such as chat history, current context,
+    and the current table. After the agent finishes, we sync the returned context
+    back into the UI session so follow-up questions keep working.
+    """
+
     result = run_agent(
         user_input=user_input,
         chat_history=_get_saved_chat_history(),
@@ -38,14 +51,26 @@ def _run_chat_turn(user_input: str):
 
 
 def _render_display_options() -> None:
+    """Expose a simple toggle so users can switch between clean view and debug view."""
+
     st.session_state.engineer_mode = st.toggle(
         "ENG'R 모드",
         value=bool(st.session_state.get("engineer_mode", False)),
-        help="켜면 pandas 처리 요약과 생성 코드까지 함께 보여줍니다.",
+        help="켜면 pandas 처리 요약과 생성 코드를 함께 보여줍니다.",
     )
 
 
 def main() -> None:
+    """Render the chat app and handle one user turn at a time.
+
+    This function is intentionally short:
+    1. prepare Streamlit session state
+    2. draw the current screen
+    3. wait for one user input
+    4. call the agent
+    5. render the answer and persist it back into session history
+    """
+
     init_session_state()
 
     st.title("제조 데이터 채팅 분석")

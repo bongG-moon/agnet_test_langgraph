@@ -164,7 +164,8 @@ app.py
 2. `QUESTION_GUIDE.md`
 3. `LANGGRAPH_DESIGN.md`
 4. `DOMAIN_GUIDE.md`
-5. `BEGINNER_ADD_GUIDE.md`
+5. `RUN_CHECKLIST.md`
+6. `BEGINNER_ADD_GUIDE.md`
 
 ## 정말 중요한 개념 2개
 
@@ -194,3 +195,8 @@ app.py
 - 조회 데이터가 이상하면: `core/data_tools.py`
 - 그래프 흐름이 이상하면: `core/agent.py`
 - 후속 pandas 분석이 이상하면: `core/data_analysis_engine.py`, `core/analysis_llm.py`
+
+## 바로 실행 테스트를 해보고 싶다면
+
+- `RUN_CHECKLIST.md`
+  - 설치, 실행, 첫 질문, 후속 질문, 비교 질문까지 가장 짧은 순서로 정리한 체크리스트입니다.

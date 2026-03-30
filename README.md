@@ -1,7 +1,7 @@
 # Compact Manufacturing Chat Service (LangGraph)
 
 제조 데이터 조회와 `current_data` 기반 pandas 후속 분석에 집중한 경량 서비스입니다.
-이 버전은 내부 실행 흐름을 `LangGraph StateGraph` 기반으로 구성했습니다.
+이 버전은 기존 Python 구현의 동작을 유지하면서, 내부 실행 흐름만 `LangGraph StateGraph` 기반으로 옮긴 버전입니다.
 
 ## 실행
 
@@ -24,43 +24,70 @@ streamlit run app.py
 - 레시피 조건
 - LOT 이력
 
-## 루트에 남겨둔 실행 파일
+## 프로젝트 구조
 
 - `app.py`
+  - Streamlit 채팅 앱 시작점
 - `ui_renderer.py`
-- `core/`
-- `.env.example`
-- `requirements.txt`
+  - 결과 표와 요약 영역 렌더링
+- `core/agent.py`
+  - LangGraph 상태, 노드, 라우팅, 최종 실행 진입점
+- `core/data_tools.py`
+  - 데이터셋별 조회 함수와 registry
+- `core/data_analysis_engine.py`
+  - 후속 pandas 분석 실행
+- `core/domain_knowledge.py`
+  - 제조 도메인 기준 사전
 
-## 참고 자료 위치
+## LangGraph 실행 흐름
 
-- `reference_materials/docs/`
-  - 초보자용 시작 문서
-  - 코드 상세 해설
-  - 질문 사용법
-  - 도메인 가이드
-  - 추가/확장 가이드
-  - 테스트 질문 모음
+`run_agent()`가 호출되면 내부에서 아래 순서로 그래프가 실행됩니다.
 
-## 초보자용 읽기 순서
+```text
+app.py
+  -> run_agent()
+     -> StateGraph
+        -> resolve_request
+        -> followup_analysis 또는 plan_retrieval
+        -> single_retrieval 또는 multi_retrieval
+        -> finish
+  -> ui_renderer.py
+```
+
+핵심 아이디어는 단순합니다.
+
+- 새 조회 질문이면 조회 노드로 보냅니다.
+- 이미 조회된 표가 있고 후속 질문이면 분석 노드로 보냅니다.
+- 여러 날짜 또는 여러 데이터셋이 필요하면 multi retrieval 경로로 보냅니다.
+
+## 참고 문서
+
+모든 가이드는 `reference_materials/docs/` 아래에 있습니다.
+
+추천 읽기 순서는 아래와 같습니다.
 
 1. `reference_materials/docs/START_HERE.md`
 2. `reference_materials/docs/CODE_WALKTHROUGH.md`
 3. `reference_materials/docs/QUESTION_GUIDE.md`
-4. `reference_materials/docs/DOMAIN_GUIDE.md`
-5. `reference_materials/docs/LANGGRAPH_DESIGN.md`
-6. `reference_materials/docs/BEGINNER_ADD_GUIDE.md`
-7. `reference_materials/docs/TEST_QUESTIONS.md`
-8. `app.py`
-9. `core/agent.py`
+4. `reference_materials/docs/LANGGRAPH_DESIGN.md`
+5. `reference_materials/docs/DOMAIN_GUIDE.md`
+6. `reference_materials/docs/RUN_CHECKLIST.md`
+7. `reference_materials/docs/BEGINNER_ADD_GUIDE.md`
+8. `reference_materials/docs/TEST_QUESTIONS.md`
 
-## 역할별 파일
+## 초보자에게 먼저 추천하는 파일
 
-- `app.py`: Streamlit 채팅 UI 시작점
-- `ui_renderer.py`: 결과 표, 조건, 분석 요약 렌더링
-- `core/agent.py`: LangGraph 상태/노드 정의와 실행 라우터
-- `core/parameter_resolver.py`: 질문 조건 추출과 para 승계
-- `core/domain_knowledge.py`: 제조 도메인 기준 사전
-- `core/data_tools.py`: 조회 함수와 dataset registry
-- `core/data_analysis_engine.py`: LLM 기반 pandas 코드 생성과 실행
-- `core/number_format.py`: 수량 컬럼 단위 표시 포맷
+- `app.py`
+  - 화면에서 질문을 받고 `run_agent()`를 호출하는 흐름이 가장 짧게 보입니다.
+- `core/agent.py`
+  - LangGraph 노드가 어떤 순서로 실행되는지 한눈에 볼 수 있습니다.
+- `core/data_tools.py`
+  - 실제 조회 데이터가 어떻게 만들어지는지 볼 수 있습니다.
+- `core/data_analysis_engine.py`
+  - 후속 pandas 분석이 어떻게 실행되는지 볼 수 있습니다.
+
+## 개발 메모
+
+- 결과 payload에는 `execution_engine="langgraph"` 메타데이터가 들어갑니다.
+- 다중 조회 비교와 초기 질문 후처리도 LangGraph 노드 흐름 안에서 처리합니다.
+- 초보자 가독성을 위해 문서와 핵심 실행 파일에 설명을 자세히 남겨두었습니다.

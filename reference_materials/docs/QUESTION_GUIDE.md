@@ -46,8 +46,8 @@
   - 현재 표가 있는지 확인
 - `core/agent.py`의 `_choose_query_mode()`
   - 후속 분석으로 갈지 결정
-- `core/data_analysis_engine.py`의 `execute_analysis_query()`
-  - 실제 pandas 분석 수행
+- `core/agent.py`의 `followup_analysis` 노드
+  - 실제 후속 분석 수행
 
 ## 3. para 승계가 무엇인가
 
@@ -73,10 +73,10 @@
 - `오늘 생산과 목표를 같이 보여줘`
 - `오늘 생산과 불량을 같이 보여줘`
 
-### 계산 질문
+### 여러 번 같은 데이터 비교
 
-- `공정별로 목표 대비 생산 달성율을 알려줘`
-- `공정군별 평균 불량률과 최빈 불량유형을 정리해줘`
+- `어제 DA공정 생산량과 오늘 DA공정 생산량을 세부 공정별로 비교해줘`
+- `어제 기준으로 생산량은 있는데 재공은 없는 제품 리스트 보여줘`
 
 ### 후속 분석 질문
 
@@ -114,12 +114,12 @@
 
 - 이전에 WIP를 보고 있었는데 `불량 보여줘`를 했을 때
 
-이 질문이 새 조회인지 후속 분석인지 애매할 수 있습니다.  
+이 질문이 새 조회인지 후속 분석인지 애매할 수 있습니다.
 이럴 때는 `오늘 TEST 공정 불량 보여줘`처럼 다시 말하면 더 안정적입니다.
 
 ## 7. 질문이 코드로 처리되는 방식
 
-초보자 입장에서는 “질문이 어디서 처리되는가”가 중요합니다.
+초보자 입장에서는 "질문이 어디서 처리되는가"가 중요합니다.
 
 ### 새 조회 질문
 
@@ -128,9 +128,9 @@
 코드 흐름:
 
 1. `core/parameter_resolver.py`의 `resolve_required_params()`
-2. `core/agent.py`의 `_run_retrieval()`
-3. `core/data_tools.py`의 `pick_retrieval_tools()`
-4. `core/data_tools.py`의 `execute_retrieval_tools()`
+2. `core/agent.py`의 `resolve_request` 노드
+3. `core/agent.py`의 `plan_retrieval` 노드
+4. `core/agent.py`의 `single_retrieval` 또는 `multi_retrieval` 노드
 
 ### 후속 분석 질문
 
@@ -138,9 +138,9 @@
 
 코드 흐름:
 
-1. `core/agent.py`의 `_run_followup_analysis()`
-2. `core/data_analysis_engine.py`의 `execute_analysis_query()`
-3. `core/analysis_llm.py`의 `build_llm_plan()`
+1. `core/agent.py`의 `resolve_request` 노드
+2. `core/agent.py`의 `followup_analysis` 노드
+3. `core/data_analysis_engine.py`의 `execute_analysis_query()`
 4. `core/safe_code_executor.py`의 `execute_safe_dataframe_code()`
 
-즉 후속 질문은 “LLM이 pandas 코드를 짠 뒤 실행하는 구조”입니다.
+즉 후속 질문은 "LangGraph가 후속 분석 노드로 보내고, 그 안에서 pandas 코드를 만들어 실행하는 구조"입니다.

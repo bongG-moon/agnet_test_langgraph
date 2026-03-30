@@ -40,7 +40,7 @@ streamlit run app.py
 - `app.py`
   - 채팅 화면 시작점
 - `core/agent.py`
-  - 질문이 새 조회인지 후속 분석인지 결정
+  - LangGraph 상태와 실행 흐름
 - `core/data_tools.py`
   - 조회 데이터 생성
 - `core/domain_knowledge.py`
@@ -48,23 +48,22 @@ streamlit run app.py
 
 ## 이 프로젝트는 LangGraph 구조인가?
 
-아니요. 이 compact 버전은 LangGraph 노드 그래프를 쓰지 않습니다.  
-대신 `run_agent()` 하나를 중심으로 여러 함수를 순서대로 호출하는 단순 구조입니다.
+네. 이 버전은 기존 Python 로직의 동작은 최대한 유지하면서, 내부 실행 순서를 `LangGraph`의 `StateGraph`로 옮긴 버전입니다.
 
 즉 현재 실행 흐름은 대략 아래와 같습니다.
 
 ```text
 app.py
   -> run_agent()
-     -> resolve_required_params()
-     -> _choose_query_mode()
-     -> _run_retrieval() 또는 _run_followup_analysis()
-        -> execute_retrieval_tools() 또는 execute_analysis_query()
+     -> StateGraph
+        -> resolve_request
+        -> followup_analysis 또는 plan_retrieval
+        -> single_retrieval 또는 multi_retrieval
+        -> finish
   -> ui_renderer.py
 ```
 
-초보자에게는 이 구조가 더 읽기 쉽습니다.  
-노드/엣지 개념보다 “어떤 함수가 다음 함수를 부르는가”만 보면 되기 때문입니다.
+초보자에게는 이 구조를 "큰 함수 하나 안에서 순서대로 하던 일을, 이름 붙은 단계로 나눈 것"이라고 생각하면 가장 이해하기 쉽습니다.
 
 ## 코드 흐름을 함수 기준으로 보기
 
@@ -76,27 +75,40 @@ app.py
   - `_run_chat_turn()`
     - 사용자 질문을 받아 `run_agent()` 호출
 
-### 2. 메인 라우터
+### 2. 메인 실행 그래프
 
 - `core/agent.py`
   - `run_agent()`
-    - 전체 흐름의 시작점
-  - `_choose_query_mode()`
-    - 새 조회인지 후속 분석인지 결정
-  - `_run_retrieval()`
-    - 생산/목표/불량/설비/WIP 같은 새 조회 실행
-  - `_run_followup_analysis()`
-    - `current_data` 기준 pandas 분석 실행
-  - `_run_multi_retrieval()`
-    - 여러 데이터셋을 같이 조회하는 질문 처리
+    - 그래프 실행 시작점
+  - `_get_agent_graph()`
+    - LangGraph `StateGraph` 생성
+  - `AgentGraphState`
+    - 노드 사이에 넘기는 상태 정의
 
-### 3. 질문 조건 추출
+### 3. 주요 노드
 
-- `core/parameter_resolver.py`
-  - `resolve_required_params()`
-    - 날짜, 공정, 제품, MODE 같은 조건 추출
-  - `_inherit_from_context()`
-    - 이전 질문 조건 승계
+- `resolve_request`
+  - 질문에서 날짜, 공정, 제품, MODE 같은 조건 추출
+  - 새 조회인지 후속 분석인지 판단
+
+- `plan_retrieval`
+  - 어떤 데이터셋을 조회할지 결정
+  - 날짜 필수 여부 확인
+  - 어제/오늘 비교처럼 여러 조회 job 생성
+
+- `single_retrieval`
+  - 조회 1건 실행
+  - 필요하면 바로 pandas 후처리 수행
+
+- `multi_retrieval`
+  - 여러 데이터셋 또는 여러 날짜 비교 조회 실행
+  - 필요하면 공통 비교용 테이블 생성
+
+- `followup_analysis`
+  - 현재 화면의 `current_data`를 다시 분석
+
+- `finish`
+  - 최종 응답 형식 정리
 
 ### 4. 조회 데이터 생성
 
@@ -150,9 +162,9 @@ app.py
 
 1. `START_HERE.md`
 2. `QUESTION_GUIDE.md`
-3. `DOMAIN_GUIDE.md`
-4. `BEGINNER_ADD_GUIDE.md`
-5. `TEST_QUESTIONS.md`
+3. `LANGGRAPH_DESIGN.md`
+4. `DOMAIN_GUIDE.md`
+5. `BEGINNER_ADD_GUIDE.md`
 
 ## 정말 중요한 개념 2개
 
@@ -180,4 +192,5 @@ app.py
 - 실행이 안 되면: `README.md`, `.env`, `requirements.txt`
 - 질문 조건이 이상하면: `core/parameter_resolver.py`
 - 조회 데이터가 이상하면: `core/data_tools.py`
+- 그래프 흐름이 이상하면: `core/agent.py`
 - 후속 pandas 분석이 이상하면: `core/data_analysis_engine.py`, `core/analysis_llm.py`
